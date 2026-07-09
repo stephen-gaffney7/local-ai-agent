@@ -1,0 +1,13 @@
+# Personal memory data - contains saved facts, shouldn't be public
+memory.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Test artifacts
+test_notes.txt
+
+# OS
+.DS_Store
+Thumbs.db
