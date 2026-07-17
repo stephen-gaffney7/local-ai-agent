@@ -7,6 +7,8 @@ memory.json. Use the "confirm_forget" skill to actually finalize
 (or cancel) the deletion after the user confirms.
 """
 
+import re
+
 from ._memory_store import load_memory
 from ._pending_deletion import set_pending, clear_pending
 
@@ -16,9 +18,14 @@ TOOL_SCHEMA = {
         "name": "forget",
         "description": (
             "Stage removal of a memory entry for confirmation (does NOT delete "
-            "yet). Pass either the index number shown by 'recall', or a text "
-            "snippet to match. After this, ask the user to confirm, then call "
-            "confirm_forget with their answer."
+            "yet). ALWAYS call this tool whenever the user asks to forget, "
+            "remove, delete, or erase something from memory -- even if you "
+            "are not sure the fact exists. This tool will correctly report "
+            "back if no match is found, so never answer a forget request "
+            "conversationally without calling it first. Pass either the "
+            "index number shown by 'recall', or a text snippet to match. "
+            "After this, ask the user to confirm, then call confirm_forget "
+            "with their answer."
         ),
         "parameters": {
             "type": "object",
@@ -32,6 +39,18 @@ TOOL_SCHEMA = {
         },
     },
 }
+
+
+def _normalize(text: str) -> str:
+    """
+    Strip punctuation and collapse whitespace so matching isn't thrown
+    off by things like a trailing period the model added on its own
+    that isn't present in the originally saved fact.
+    """
+    text = text.lower()
+    text = re.sub(r"[^\w\s]", "", text)  # remove punctuation
+    text = re.sub(r"\s+", " ", text).strip()  # collapse whitespace
+    return text
 
 
 def run(target: str) -> str:
@@ -53,11 +72,19 @@ def run(target: str) -> str:
         clear_pending()
         return f"No memory entry at index {idx}. Nothing staged."
 
-    matches = [i for i, item in enumerate(memory) if target.lower() in item.lower()]
+    normalized_target = _normalize(target)
+    matches = [
+        i for i, item in enumerate(memory)
+        if normalized_target in _normalize(item)
+    ]
 
     if not matches:
         clear_pending()
-        return f"No memory entries matched '{target}'. Nothing staged."
+        return (
+            f"No memory entries matched '{target}'. Nothing staged -- tell "
+            f"the user directly that nothing matched. Do NOT ask for yes/no "
+            f"confirmation, since there is nothing staged to confirm."
+        )
 
     if len(matches) > 1:
         clear_pending()

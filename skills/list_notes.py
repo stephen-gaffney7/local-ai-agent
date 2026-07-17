@@ -6,7 +6,10 @@ TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "list_notes",
-        "description": "Retrieve all saved timestamped notes, most recent first.",
+        "description": (
+            "Retrieve saved notes/journal entries (each timestamped). Not "
+            "for plain facts -- use recall for those."
+        ),
         "parameters": {"type": "object", "properties": {}},
     },
 }

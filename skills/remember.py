@@ -6,7 +6,10 @@ TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "remember",
-        "description": "Save a fact or note to permanent long-term memory.",
+        "description": (
+            "Save a plain fact (no timestamp) -- name, preferences, personal "
+            "details. Use add_note instead for timestamped journal entries."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

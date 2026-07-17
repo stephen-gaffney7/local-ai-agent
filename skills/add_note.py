@@ -8,14 +8,13 @@ TOOL_SCHEMA = {
     "function": {
         "name": "add_note",
         "description": (
-            "Save a timestamped note or journal entry. Use this for things "
-            "the user wants logged with a date/time attached, as opposed to "
-            "'remember' which is for plain facts with no timestamp."
+            "Save a timestamped note or journal entry. Different from "
+            "'remember', which saves plain facts with no timestamp."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "note": {"type": "string", "description": "The note content"}
+                "note": {"type": "string", "description": "The note text, as a plain string"}
             },
             "required": ["note"],
         },
@@ -23,7 +22,25 @@ TOOL_SCHEMA = {
 }
 
 
-def run(note: str) -> str:
+def _coerce_to_string(note) -> str:
+    """
+    Defensive fallback: if the model passes something other than a plain
+    string (e.g. a dict echoing the schema's own keys, seen in v3.1
+    testing), try to pull out something usable rather than saving a
+    corrupted structure to disk.
+    """
+    if isinstance(note, str):
+        return note
+    if isinstance(note, dict):
+        for key in ("description", "note", "value", "content", "text"):
+            if key in note and isinstance(note[key], str):
+                return note[key]
+        return str(note)
+    return str(note)
+
+
+def run(note) -> str:
+    note = _coerce_to_string(note)
     notes = load_notes()
     entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
