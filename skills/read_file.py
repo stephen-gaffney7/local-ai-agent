@@ -4,7 +4,11 @@ TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_file",
-        "description": "Read the text contents of a local file by path.",
+        "description": (
+            "Read the text contents of a local file by path. This is separate "
+            "from the memory/notes system -- file contents are not saved "
+            "facts or notes and can't be 'forgotten' via forget."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

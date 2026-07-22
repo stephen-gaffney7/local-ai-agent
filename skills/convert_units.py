@@ -5,9 +5,11 @@ TOOL_SCHEMA = {
     "function": {
         "name": "convert_units",
         "description": (
-            "Convert a numeric value between units of length, weight, or "
-            "temperature. Supported length: m, km, cm, mm, mile, ft, in. "
-            "Supported weight: kg, g, lb, oz. Supported temperature: c, f, k."
+            "ALWAYS use this for any unit conversion -- do not compute it "
+            "manually with calculator. Convert a numeric value between units "
+            "of length, weight, or temperature. Supported length: m, km, cm, "
+            "mm, mile, ft, in. Supported weight: kg, g, lb, oz. Supported "
+            "temperature: c, f, k."
         ),
         "parameters": {
             "type": "object",

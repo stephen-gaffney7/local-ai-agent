@@ -23,11 +23,11 @@ The agent can:
 
 ```
 AI Research - July 2026/
-├── agent_with_tools_v3_2.py    # main script — current version
+├── agent_with_tools_v3_3.py    # main script — current version
 ├── memory.json                  # persistent long-term facts (auto-created)
 ├── notes.json                   # persistent timestamped notes (auto-created)
 ├── test_notes.txt               # sample file used for read_file testing
-├── agent_testing_results.xlsx   # test case log from V1-V3.2 testing sessions
+├── agent_testing_results.xlsx   # test case log from V1-V3.3 testing sessions
 └── skills/
     ├── __init__.py               # marks the folder as a Python package
     ├── _memory_store.py          # shared load/save helpers for facts (not a tool itself)
@@ -38,14 +38,14 @@ AI Research - July 2026/
     ├── convert_units.py          # length/weight/temperature conversion
     ├── remember.py                # save a fact to long-term memory
     ├── recall.py                  # retrieve all saved facts
-    ├── forget.py                   # stage removal of a fact by index or text match
+    ├── forget.py                   # stage removal of a fact by index, text snippet, or paraphrase
     ├── confirm_forget.py           # finalize or cancel a staged deletion
     ├── add_note.py                 # save a timestamped note
     ├── list_notes.py               # retrieve all saved notes
     └── read_file.py                # read a local text file's contents
 ```
 
-Earlier, simpler versions (`basic_chat_agent.py`, `agent_with_tools.py`, `agent_with_tools_v2.py`, `agent_with_tools_v3.py`, `agent_with_tools_v3_1.py`) are kept in a `deprecated/` folder in the GitHub repo for reference but are superseded by `agent_with_tools_v3_2.py`.
+Earlier, simpler versions (`basic_chat_agent.py`, `agent_with_tools.py`, `agent_with_tools_v2.py`, `agent_with_tools_v3.py`, `agent_with_tools_v3_1.py`, `agent_with_tools_v3_2.py`) are kept in a `deprecated/` folder in the GitHub repo for reference but are superseded by `agent_with_tools_v3_3.py`.
 
 ---
 
@@ -68,7 +68,7 @@ Earlier, simpler versions (`basic_chat_agent.py`, `agent_with_tools.py`, `agent_
 5. **Set your working directory** (in Spyder: Tools → Preferences → Current working directory) to this project folder, so relative paths (`test_notes.txt`, etc.) resolve correctly.
 6. **Run the agent:**
    ```bash
-   python agent_with_tools_v3_2.py
+   python agent_with_tools_v3_3.py
    ```
    On startup you should see:
    ```
@@ -92,7 +92,12 @@ I split memory into two distinct stores, since I found the model needs a clear d
 Both use `Path(__file__).parent` so they're found reliably regardless of whatever working directory Python happens to be using, and both are loaded fresh every time the script starts, so everything persists across restarts.
 
 ### Two-step forget confirmation
-Deleting a fact is a two-step process as of v3: `forget` finds a match (by index or text snippet) and *stages* it without deleting anything, then I have to explicitly confirm before `confirm_forget` actually removes it. If a text snippet matches more than one saved fact, nothing is staged — it lists the matches and asks me to specify an index instead. NOTE: indexing is 0-based, so the first entry is `[0]`, the second is `[1]`, and so on. As of v3.2, matching also normalizes punctuation and whitespace before comparing, so a stray trailing period on the model's part won't cause a false "no match" — though matching is still substring-based, so a paraphrased search term that doesn't literally appear in the saved fact still won't match (see Known Bugs below).
+Deleting a fact is a two-step process as of v3: `forget` finds a match (by index, text snippet, or now paraphrase — see below) and *stages* it without deleting anything, then I have to explicitly confirm before `confirm_forget` actually removes it. If a text snippet matches more than one saved fact, nothing is staged — it lists the matches and asks me to specify an index instead. NOTE: indexing is 0-based, so the first entry is `[0]`, the second is `[1]`, and so on. As of v3.2, matching normalizes punctuation and whitespace before comparing. As of v3.3, matching also tolerates paraphrasing: if the meaningful words in a search target all appear somewhere in a saved fact (regardless of exact wording or order), that counts as a match too, not just literal substrings.
+
+### Deterministic safeguards (code-level, not just prompting)
+Two things are handled directly in Python rather than relying on the model to behave correctly:
+- **Bare yes/no interception:** if I reply with just "yes," "no," or similar, and nothing is actually staged for deletion, the script answers directly without even consulting the model — eliminating any chance of a fabricated "staged for deletion" claim for that specific case.
+- **Memory-query grounding:** if my message looks like a question about what's saved, the script silently calls `recall`/`list_notes` itself and injects the real result into context before the model responds, regardless of whether the model chooses to call the tool on its own.
 
 ### Short-term memory
 Conversation history is trimmed to the last 12 messages, but this is customizable (`MAX_HISTORY_MESSAGES`) each turn, so response time doesn't keep degrading as a session gets longer. `CONTEXT_TOKENS` is also customizable, currently set to 4096 (up from Ollama's default of 2048) to give the model more room, balanced against local RAM concerns.
@@ -102,37 +107,37 @@ Occasionally the model returns an empty reply with no tool call. `call_model()` 
 
 ---
 
-## v3.2 Bug-Fix Results
+## v3.3 Bug-Fix Results
 
-Full test logs for every version live in `agent_testing_results.xlsx` (one sheet per version). v3.2 targeted four bugs found in v3.1 testing. Here's how each one actually held up under a full retest:
+Full test logs for every version live in `agent_testing_results.xlsx` (one sheet per version). v3.3 targeted the top issues from v3.2 testing. Here's how it actually held up:
 
 **Confirmed fixed:**
-- **Calculator sqrt/abs/round override** — fully fixed. The tool now actually supports these operations, so there's no error left for the model to override with a guess. Verified correct on every retest.
-- **`add_note` argument corruption** — fully fixed. Both notes saved as clean plain strings this round, no malformed nested objects. The defensive coercion plus shortened tool descriptions both seem to have helped.
+- **Forget paraphrase-fragile matching** — fully fixed and verified. The exact case that failed in v3.2 (a compressed search term like "prefer_metric" against the saved fact "I prefer imperial units over metric") now matches correctly via a new word-subset matching tier, with no regression to normal substring matching.
+- **`convert_units` bypass** — fixed for the three valid-conversion test cases this round; the tool was actually called instead of the model computing conversions manually via `calculator`. The mismatched-category case still didn't invoke the tool itself, though the model reasoned through it correctly on its own.
+- **Selective tool-dropping in multi-part requests** — both multi-part test prompts correctly chained both needed tools this round, a clean improvement over earlier versions.
+- **Ambiguous-decline comprehension** — "Don't forget either" was correctly recognized as a decline on the first attempt this round, an improvement over v3.2 needing two tries.
 
-**Partially fixed / new failure modes surfaced:**
-- **`forget` punctuation-sensitivity** — the specific bug (trailing punctuation causing a false "no match") is fixed and verified. But testing surfaced a related, different limitation: since matching is still substring-based, if I (or the model) describe a fact using a paraphrase instead of a literal snippet of the saved text, it still won't match. This isn't something v3.2 was designed to fix, but it's a real practical constraint worth addressing next.
-- **Stuck-loop / false confirmation after a failed forget** — the original symptom (asking for yes/no confirmation right after correctly reporting no match) is fixed. But a **new and more concerning version showed up** in the previously-untested `confirm_forget` misuse case: saying "yes" when nothing was actually staged caused the assistant to fabricate an entirely fictional "staged for deletion" state, with no tool call behind it at all. That false belief even persisted into a following, unrelated request before finally being dropped. Ground truth was never at risk (no tool call means no data was touched), but this is a real regression I want to prioritize in v3.3.
-- **Selective tool-dropping in multi-part requests** — improved but inconsistent. One multi-part prompt correctly chained both needed tools; another only called one of the two and then falsely claimed memory was empty when it wasn't, without ever calling `recall` to check.
+**Worked as designed, but exposed a real regression:**
+- **`confirm_forget` fabrication fix** — the code-level intercept works exactly as intended for its target case (a bare "yes" with nothing staged, tested in isolation, correctly got the deterministic "nothing pending" response with zero model involvement). **However**, this same mechanism is scoped too broadly: it caught ordinary, unrelated "yes" replies too — specifically, when the model added its own unprompted "Is this correct?" after a `remember` call, replying "yes" to that got the canned forget-related deflection instead of just... being acknowledged normally. This is a genuine new bug to fix in v3.4, not just a lingering model-behavior quirk — it's a scoping problem in the fix itself.
 
-**New issue found (not part of v3.2's original scope):**
-- **`convert_units` going unused** — in this round's testing, the model never actually called the `convert_units` tool, instead manually computing conversions via `calculator` with hardcoded constants. Answers happened to be numerically correct, but this bypasses the tool's built-in mismatched-category safety check entirely (that specific test case got the right answer through the model's own reasoning, not the tool's error handling).
-
----
-
-## Known Bugs I'm Currently Tracking (fixing in v3.3 before new functionality)
-
-- **`confirm_forget` fabricating staged deletions:** saying "yes" or similar with nothing actually staged should either be ignored or clearly state nothing is pending — not invent a fictional staged entry. This is the top priority for v3.3.
-- **Forget matching is paraphrase-fragile:** substring matching means the model has to reproduce a literal snippet of the saved fact, not a summary of it. Considering fuzzy/keyword-based matching as a next step.
-- **`convert_units` bypass:** need to strengthen the tool description or system prompt so unit conversions reliably go through the dedicated tool rather than ad hoc arithmetic.
-- **Inconsistent recall verification:** "what's saved in memory" answers aren't always backed by an actual `recall` call — sometimes accurate from context, sometimes confidently wrong (this round, a real regression: falsely claimed empty memory when facts existed).
-- **Ambiguous-decline comprehension:** softer phrasing like "don't forget either" isn't always understood on the first try; only a blunter "Neither" reliably registers.
+**Still an open problem, and possibly a deeper one than expected:**
+- **Inconsistent recall verification** — the proactive grounding injection (silently calling `recall`/`list_notes` and putting the real result in context) does work mechanically — verified the correct data was actually injected. But in one case, the model was handed the accurate answer directly in context and **still answered incorrectly**, confidently claiming no facts were saved when 2 real facts existed. This suggests guaranteeing correct data in context isn't sufficient on its own; the model can still choose to ignore it. Also saw a new disambiguation regression in the opposite direction from before: a facts question ("what's saved in memory") triggered a `list_notes` tool call instead of `recall` on two occasions.
 
 ---
 
-## Possible Next Steps (after v3.3 bug fixes)
+## Known Bugs I'm Currently Tracking (fixing in v3.4 before new functionality)
+
+- **Bare yes/no intercept over-triggering (new, top priority):** needs to only intercept when the model's own preceding message was actually a forget-confirmation question, not any arbitrary yes/no exchange. Likely fix: track whether the last assistant message was itself a staged-deletion confirmation prompt, rather than intercepting based on user input alone.
+- **Grounded data being ignored:** even with accurate `recall`/`list_notes` output silently injected into context, the model gave a confidently false answer once. Need to investigate whether this is a phrasing/prominence issue with how the grounding note is presented, or a deeper limitation.
+- **recall vs list_notes disambiguation regression:** a plain "what's saved in memory" question triggered `list_notes` instead of `recall` twice this round — the opposite confusion from earlier versions, suggesting this disambiguation is still fragile rather than solved.
+- **File content bleeding into the forget/memory system:** after reading a file, the assistant unprompted referred to its contents as "a timestamped note from your log" and offered to remove it — a minor but real confabulation blending unrelated systems.
+- **`convert_units` still not invoked for the mismatched-category case:** works fine for valid conversions now, but the specific safety-check path (incompatible units) still bypasses the tool, even though the conversational answer happens to be correct.
+
+---
+
+## Possible Next Steps (after v3.4 bug fixes)
 
 - Expand skills (web search, web-scraping, unit conversion refinements)
    - Much further down the line, a Selenium integration would be deeply interesting.
 - Try a larger model than `qwen2.5:3b` (e.g. `qwen2.5:7b`) if I get access to more RAM/compute, to compare reliability against the 3B version
-- Consider fuzzy or keyword-based matching for `forget` instead of strict substring matching
+- Consider whether some of these remaining issues are inherent limits of a 3B model rather than fixable via better prompting/code scaffolding alone

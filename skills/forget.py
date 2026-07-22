@@ -23,9 +23,10 @@ TOOL_SCHEMA = {
             "are not sure the fact exists. This tool will correctly report "
             "back if no match is found, so never answer a forget request "
             "conversationally without calling it first. Pass either the "
-            "index number shown by 'recall', or a text snippet to match. "
-            "After this, ask the user to confirm, then call confirm_forget "
-            "with their answer."
+            "index number shown by 'recall', or a text snippet or paraphrase "
+            "to match -- matching tolerates different wording, not just exact "
+            "substrings. After this, ask the user to confirm, then call "
+            "confirm_forget with their answer."
         ),
         "parameters": {
             "type": "object",
@@ -41,6 +42,12 @@ TOOL_SCHEMA = {
 }
 
 
+_STOPWORDS = {
+    "i", "a", "an", "the", "is", "are", "was", "were", "am", "to", "of",
+    "in", "on", "at", "that", "this", "my", "me", "and", "or", "it",
+}
+
+
 def _normalize(text: str) -> str:
     """
     Strip punctuation and collapse whitespace so matching isn't thrown
@@ -48,9 +55,36 @@ def _normalize(text: str) -> str:
     that isn't present in the originally saved fact.
     """
     text = text.lower()
+    text = text.replace("_", " ")  # so 'prefer_metric' splits into separate words
     text = re.sub(r"[^\w\s]", "", text)  # remove punctuation
     text = re.sub(r"\s+", " ", text).strip()  # collapse whitespace
     return text
+
+
+def _meaningful_words(text: str) -> set:
+    return {w for w in text.split() if w not in _STOPWORDS}
+
+
+def _is_match(target: str, item: str) -> bool:
+    """
+    Two-tier matching:
+    1. Substring match (handles exact/near-exact snippets, case- and
+       punctuation-insensitive).
+    2. Word-subset match (handles paraphrases, e.g. a compressed search
+       term like "prefer_metric" -- once normalized to "prefer metric"
+       -- against a saved fact like "I prefer imperial units over
+       metric"). Requires at least one meaningful (non-stopword) word,
+       so short/common-word targets don't match everything.
+    """
+    if target in item:
+        return True
+
+    target_words = _meaningful_words(target)
+    item_words = _meaningful_words(item)
+    if target_words and target_words.issubset(item_words):
+        return True
+
+    return False
 
 
 def run(target: str) -> str:
@@ -75,7 +109,7 @@ def run(target: str) -> str:
     normalized_target = _normalize(target)
     matches = [
         i for i, item in enumerate(memory)
-        if normalized_target in _normalize(item)
+        if _is_match(normalized_target, _normalize(item))
     ]
 
     if not matches:
